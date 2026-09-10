@@ -159,10 +159,12 @@ struct http_server : std::enable_shared_from_this<http_server> {
         bool header_ready = false;
         bool body_ready = false;
         bool parse_failed = false;
+        size_t body_start = 0;
 
         void reset() {
             buffer.clear();
             request = {};
+             body_start = 0;
             content_length = 0;
             header_ready = false;
             body_ready = false;
@@ -180,7 +182,7 @@ struct http_server : std::enable_shared_from_this<http_server> {
         bool feed(std::string_view chunk) {
             // 一次 read 不一定读完整个请求，所以每次都追加到 buffer。
             buffer.append(chunk.begin(), chunk.end());
-
+            size_t header_end = buffer.find("\r\n\r\n");
             if (!header_ready) {
                 // HTTP 头部以两个连续的 CRLF 结束。
                 size_t header_end = buffer.find("\r\n\r\n");
@@ -283,10 +285,10 @@ struct http_server : std::enable_shared_from_this<http_server> {
                 }
 
                 // header_end 后面的内容属于请求体，可能暂时还不完整。
-                request.body = buffer.substr(header_end + 4);
+
                 header_ready = true;
             }
-
+            request.body = buffer.substr(header_end + 4);
             if (!header_ready) {
                 return false;
             }
