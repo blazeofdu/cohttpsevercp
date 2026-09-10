@@ -12,7 +12,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <utility>
-
+#include "net.hpp"
 struct http_client {
     struct http_response {
         int status = 0;
@@ -21,24 +21,8 @@ struct http_client {
         std::string body;
     };
 
-    // 循环发送数据，直到整个 HTTP 请求都写入 socket。
-    static bool write_all(int fd, std::string_view data) {
-        size_t sent = 0;
-        while (sent < data.size()) {
-            ssize_t n = ::write(fd, data.data() + sent, data.size() - sent);
-            if (n == -1) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                return false;
-            }
-            if (n == 0) {
-                return false;
-            }
-            sent += static_cast<size_t>(n);
-        }
-        return true;
-    }
+
+
 
     // 持续读取服务端响应，直到服务端关闭连接。
     static std::string read_until_close(int fd) {
@@ -242,7 +226,7 @@ struct http_client {
         request_text += "\r\n";
         request_text += body;
 
-        if (!write_all(fd, request_text)) {
+        if (!net::write_all(fd, request_text)) {
             ::close(fd);
             throw std::runtime_error("write request failed");
         }

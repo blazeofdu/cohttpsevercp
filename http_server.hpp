@@ -18,7 +18,7 @@
 #include <unistd.h>
 #include <utility>
 #include <arpa/inet.h>
-
+#include "net.hpp"
 // 这是同步版 HTTP 服务器：
 // 先完成 socket、请求解析、路由和响应，再学习异步和 epoll。
 
@@ -346,24 +346,7 @@ struct http_server : std::enable_shared_from_this<http_server> {
         return response;
     }
 
-    static bool write_all(int fd, std::string_view data) {
-        // write 可能只发送一部分，因此循环直到全部发送完成。
-        size_t sent = 0;
-        while (sent < data.size()) {
-            ssize_t n = ::write(fd, data.data() + sent, data.size() - sent);
-            if (n == -1) {
-                if (errno == EINTR) {
-                    continue;
-                }
-                return false;
-            }
-            if (n == 0) {
-                return false;
-            }
-            sent += static_cast<size_t>(n);
-        }
-        return true;
-    }
+
 
     void handle_connection(int conn_fd) {
         // 处理一个客户端连接的一次 HTTP 请求。
@@ -403,7 +386,7 @@ struct http_server : std::enable_shared_from_this<http_server> {
         }
 
         std::string response = make_response(parser.request);
-        if (!write_all(conn_fd, response)) {
+        if (!net::write_all(conn_fd, response)) {
             throw std::system_error(errno, std::system_category(), "write");
         }
     }
@@ -467,12 +450,7 @@ struct http_server : std::enable_shared_from_this<http_server> {
     }
 
 
-    static void set_nonblocking(int fd) { // 非阻塞
-        int flags = ::fcntl(fd, F_GETFL, 0); // 当前状态
-        if (flags == -1 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) { // 添加状态
-            throw std::system_error(errno, std::system_category(), "fcntl");
-        }
-    }
+
 
       // 使用 epoll 同时管理多个客户端连接。
     void run_epoll(const char *ip, uint16_t port) {
@@ -480,7 +458,7 @@ struct http_server : std::enable_shared_from_this<http_server> {
         if (listen_fd == -1) {
             throw std::system_error(errno, std::system_category(), "socket");
         }
-        set_nonblocking(listen_fd);
+        net::set_nonblocking(listen_fd);
 
         int yes = 1;
         if (::setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR,
@@ -558,7 +536,7 @@ struct http_server : std::enable_shared_from_this<http_server> {
                                 errno, std::system_category(), "accept");
                         }
 
-                        set_nonblocking(conn_fd);
+                       net::set_nonblocking(conn_fd);
                         connections.emplace(conn_fd, connection_state{});
                         epoll_event conn_event{};
                         conn_event.events = EPOLLIN | EPOLLET; //监听可读事件使用和 边缘触发模式：只有状态从“没有数据”变成“有数据”时通知一次
